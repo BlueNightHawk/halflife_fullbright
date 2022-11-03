@@ -36,6 +36,10 @@ void DLLEXPORT HUD_DrawNormalTriangles()
 	gHUD.m_Spectator.DrawOverview();
 }
 
+// FULLBRIGHT START
+void CacheFullbrightModels();
+bool m_bCacheFullbrightModels = true;
+// FULLBRIGHT END
 
 /*
 =================
@@ -47,6 +51,14 @@ Render any triangles with transparent rendermode needs here
 void DLLEXPORT HUD_DrawTransparentTriangles()
 {
 	//	RecClDrawTransparentTriangles();
+
+	// FULLBRIGHT START
+	if (m_bCacheFullbrightModels)
+	{
+		CacheFullbrightModels();
+		m_bCacheFullbrightModels = false;
+	}
+	// FULLBRIGHT END
 
 
 	if (g_pParticleMan)

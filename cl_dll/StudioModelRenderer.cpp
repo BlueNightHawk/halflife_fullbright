@@ -1969,6 +1969,7 @@ void CStudioModelRenderer::StudioCacheFullbrightNames()
 	for (int i = 0; i < 512; i++)
 	{
 		memset(m_szFullBrightModels[i], '\0', 64);
+		memset(m_szCheckedModels[i], '\0', 64);
 	}
 
 	for (int i = 0; i < 512; i++)

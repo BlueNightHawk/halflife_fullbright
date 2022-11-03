@@ -87,22 +87,13 @@ void CHud::Think()
 	}
 }
 
-// FULLBRIGHT START
-void CacheFullbrightModels();
-bool m_bCacheFullbrightModels = true;
-// FULLBRIGHT END
+
+
 // Redraw
 // step through the local data,  placing the appropriate graphics & text as appropriate
 // returns 1 if they've changed, 0 otherwise
 bool CHud::Redraw(float flTime, bool intermission)
 {
-	// FULLBRIGHT START
-	if (m_bCacheFullbrightModels)
-	{
-		CacheFullbrightModels();
-		m_bCacheFullbrightModels = false;
-	}
-	// FULLBRIGHT END
 	m_fOldTime = m_flTime; // save time of previous redraw
 	m_flTime = flTime;
 	m_flTimeDelta = (double)m_flTime - m_fOldTime;

@@ -179,4 +179,16 @@ public:
 	// Concatenated bone and light transforms
 	float (*m_pbonetransform)[MAXSTUDIOBONES][3][4];
 	float (*m_plighttransform)[MAXSTUDIOBONES][3][4];
+
+	// FULLBRIGHT START
+
+	bool StudioGetFullbright(model_s* pmodel);
+
+	void StudioRenderEntity(bool fullbright = false);
+	void StudioCacheFullbrightNames();
+
+	char m_szCheckedModels[512][64];
+	char m_szFullBrightModels[512][64];
+
+	// FULLBRIGHT END
 };

@@ -21,6 +21,58 @@
 #include "StudioModelRenderer.h"
 #include "GameStudioModelRenderer.h"
 
+// FULLBRIGHT START
+#include "PlatformHeaders.h"
+#include <gl/GL.h>
+
+#include <string>
+
+#define GL_CLAMP_TO_EDGE 0x812F
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
+GLuint g_iBlankTex = 0;
+
+// Simple helper function to load an image into a OpenGL texture with common settings
+bool LoadTextureFromFile(const char* filename, GLuint* out_texture, int* out_width = nullptr, int* out_height = nullptr)
+{
+	// Load from file
+	int image_width = 0;
+	int image_height = 0;
+	unsigned char* image_data = stbi_load(filename, &image_width, &image_height, NULL, 4);
+	if (image_data == NULL)
+		return false;
+
+	// Create a OpenGL texture identifier
+	GLuint image_texture;
+	glGenTextures(1, &image_texture);
+	glBindTexture(GL_TEXTURE_2D, image_texture);
+
+	// Setup filtering parameters for display
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); // This is required on WebGL for non power-of-two textures
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); // Same
+
+	// Upload pixels into texture
+#if defined(GL_UNPACK_ROW_LENGTH) && !defined(__EMSCRIPTEN__)
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+#endif
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image_width, image_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image_data);
+	stbi_image_free(image_data);
+
+	*out_texture = image_texture;
+
+	if (out_width)
+		*out_width = image_width;
+	if (out_height)
+		*out_height = image_height;
+
+	return true;
+}
+
+// FULLBRIGHT END
 extern cvar_t* tfc_newmodels;
 
 extern extra_player_info_t g_PlayerExtraInfo[MAX_PLAYERS_HUD + 1];
@@ -47,6 +99,9 @@ Init
 */
 void CStudioModelRenderer::Init()
 {
+	// FULLBRIGHT START
+	StudioCacheFullbrightNames();
+	// FULLBRIGHT END
 	// Set up some variables shared with engine
 	m_pCvarHiModels = IEngineStudio.GetCvar("cl_himodels");
 	m_pCvarDeveloper = IEngineStudio.GetCvar("developer");
@@ -1197,23 +1252,29 @@ bool CStudioModelRenderer::StudioDrawModel(int flags)
 
 	if ((flags & STUDIO_RENDER) != 0)
 	{
-		lighting.plightvec = dir;
-		IEngineStudio.StudioDynamicLight(m_pCurrentEntity, &lighting);
-
-		IEngineStudio.StudioEntityLight(&lighting);
-
-		// model and frame independant
-		IEngineStudio.StudioSetupLighting(&lighting);
-
-		// get remap colors
-
 		m_nTopColor = m_pCurrentEntity->curstate.colormap & 0xFF;
 		m_nBottomColor = (m_pCurrentEntity->curstate.colormap & 0xFF00) >> 8;
 
-
 		IEngineStudio.StudioSetRemapColors(m_nTopColor, m_nBottomColor);
 
-		StudioRenderModel();
+		if (!StudioGetFullbright(m_pRenderModel))
+		{
+			lighting.plightvec = dir;
+			IEngineStudio.StudioDynamicLight(m_pCurrentEntity, &lighting);
+
+			IEngineStudio.StudioEntityLight(&lighting);
+
+			// model and frame independant
+			IEngineStudio.StudioSetupLighting(&lighting);
+
+			// get remap colors
+			StudioRenderModel();
+		}
+		else
+		{
+			StudioRenderEntity(false);
+			StudioRenderEntity(true);
+		}
 	}
 
 	return true;
@@ -1731,3 +1792,189 @@ void CStudioModelRenderer::StudioRenderFinal()
 		StudioRenderFinal_Software();
 	}
 }
+
+// FULLBRIGHT START
+/*
+====================
+StudioGetFullbright
+
+returns true if model has a fullbright texture
+also caches the name if it isnt cached yet
+====================
+*/
+bool CStudioModelRenderer::StudioGetFullbright(model_s* pmodel)
+{
+	if (!pmodel || pmodel->type != mod_studio)
+		return false;
+
+	// check if this model is already been checked
+	for (int list = 0; list < 512; list++)
+	{
+		if (!stricmp(pmodel->name, m_szFullBrightModels[list]))
+		{
+			return true;
+		}
+	}
+
+	// check if this model is already on our list
+	for (int list = 0; list < 512; list++)
+	{
+		if (!strcmp(pmodel->name, m_szCheckedModels[list]))
+		{
+			return false;
+		}
+	}
+
+	studiohdr_t* pHdr = (studiohdr_t*)IEngineStudio.Mod_Extradata(pmodel);
+	mstudiotexture_t* pTexture = (mstudiotexture_t*)((byte*)pmodel->cache.data + pHdr->textureindex);
+
+	if (strncmp((const char*)pHdr, "IDST", 4) && strncmp((const char*)pHdr, "IDSQ", 4))
+	{
+	//	delete[] pBuffer;
+
+		for (int list = 0; list < 512; list++)
+		{
+			if (strlen(m_szCheckedModels[list]) <= 0)
+			{
+				strcpy(m_szCheckedModels[list], pmodel->name);
+				break;
+			}
+		}
+		return false;
+	}
+
+	bool foundfullbright = false;
+	if (pHdr->textureindex)
+	{
+		for (int i = 0; i < pHdr->numtextures; i++)
+		{
+			//memcpy(&pTexture[i], &pTexture[pHdr->numtextures + 1], sizeof(mstudiotexture_t));
+			if (pTexture[i].flags & STUDIO_NF_FULLBRIGHT)
+			{
+				foundfullbright = true;
+			}
+		}
+		if (foundfullbright)
+		{
+			for (int list = 0; list < 512; list++)
+			{
+				if (strlen(m_szFullBrightModels[list]) <= 0)
+				{
+					strcpy(m_szFullBrightModels[list], pmodel->name);
+					break;
+				}
+			}
+		}
+	}
+
+	for (int list = 0; list < 512; list++)
+	{
+		if (strlen(m_szCheckedModels[list]) <= 0)
+		{
+			strcpy(m_szCheckedModels[list], pmodel->name);
+			break;
+		}
+	}
+
+	return foundfullbright;
+}
+
+
+/*
+====================
+StudioRenderEntity
+
+if fullbright boolean is true, it renders only the fullbright texture
+if false, it renders all non-fullbright textures
+====================
+*/
+void CStudioModelRenderer::StudioRenderEntity(bool fullbright)
+{
+	mstudiotexture_t savedtexture[64];
+
+	studiohdr_t* pHdr = (studiohdr_t*)m_pStudioHeader;
+	mstudiotexture_t* pTexture = (mstudiotexture_t*)((byte*)m_pRenderModel->cache.data + pHdr->textureindex);
+
+	if (pHdr->textureindex)
+	{
+		for (int i = 0; i < pHdr->numtextures; i++)
+		{
+			memcpy(&savedtexture[i], &pTexture[i], sizeof(mstudiotexture_t));
+			// memcpy(&pTexture[i], &pTexture[pHdr->numtextures + 1], sizeof(mstudiotexture_t));
+			if (pTexture[i].flags & STUDIO_NF_FULLBRIGHT)
+			{
+				if (!fullbright)
+				{
+					pTexture[i].index = g_iBlankTex;
+					pTexture[i].flags |= STUDIO_NF_ADDITIVE;
+				}
+			}
+			else if (fullbright)
+			{
+				pTexture[i].index = g_iBlankTex;
+				pTexture[i].flags |= STUDIO_NF_ADDITIVE;
+			}
+		}
+	}
+
+	if (fullbright)
+	{
+		alight_t lighting;
+		Vector dir;
+		lighting.plightvec = dir;
+
+		IEngineStudio.StudioDynamicLight(m_pCurrentEntity, &lighting);
+		lighting.color = {255, 255, 255};
+
+		IEngineStudio.StudioEntityLight(&lighting);
+		// model and frame independant
+		IEngineStudio.StudioSetupLighting(&lighting);
+
+		StudioRenderModel();
+	}
+	else
+	{
+		alight_t lighting;
+		Vector dir;
+		lighting.plightvec = dir;
+
+		IEngineStudio.StudioDynamicLight(m_pCurrentEntity, &lighting);
+
+		IEngineStudio.StudioEntityLight(&lighting);
+		// model and frame independant
+		IEngineStudio.StudioSetupLighting(&lighting);
+
+		StudioRenderModel();
+	}
+
+	for (int i = 0; i < pHdr->numtextures; i++)
+	{
+		memcpy(&pTexture[i], &savedtexture[i], sizeof(mstudiotexture_t));
+	}
+}
+
+/*
+====================
+StudioCacheFullbrightNames
+
+====================
+*/
+void CStudioModelRenderer::StudioCacheFullbrightNames()
+{
+	const char* gamedir = gEngfuncs.pfnGetGameDirectory();
+
+	LoadTextureFromFile(((std::string) "./" + gamedir + "/gfx/blank.png").c_str(), &g_iBlankTex);
+
+	// clear the cache
+	for (int i = 0; i < 512; i++)
+	{
+		memset(m_szFullBrightModels[i], '\0', 64);
+	}
+
+	for (int i = 0; i < 512; i++)
+	{
+		StudioGetFullbright(IEngineStudio.GetModelByIndex(i));
+	}
+}
+
+// FULLBRIGHT END

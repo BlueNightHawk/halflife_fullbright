@@ -118,3 +118,9 @@ int DLLEXPORT HUD_GetStudioModelInterface(int version, struct r_studio_interface
 	// Success
 	return 1;
 }
+// FULLBRIGHT START
+void CacheFullbrightModels()
+{
+	g_StudioRenderer.StudioCacheFullbrightNames();
+}
+// FULLBRIGHT END

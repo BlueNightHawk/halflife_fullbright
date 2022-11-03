@@ -30,6 +30,9 @@
 #include "demo_api.h"
 #include "vgui_ScorePanel.h"
 
+// FULLBRIGHT START
+extern bool m_bCacheFullbrightModels;
+// FULLBRIGHT END
 hud_player_info_t g_PlayerInfoList[MAX_PLAYERS_HUD + 1];	// player info from the engine
 extra_player_info_t g_PlayerExtraInfo[MAX_PLAYERS_HUD + 1]; // additional player info sent directly to the client dll
 
@@ -513,6 +516,9 @@ void CHud::VidInit()
 	m_TextMessage.VidInit();
 	m_StatusIcons.VidInit();
 	GetClientVoiceMgr()->VidInit();
+	// FULLBRIGHT START
+	m_bCacheFullbrightModels = true;
+	// FULLBRIGHT END
 }
 
 bool CHud::MsgFunc_Logo(const char* pszName, int iSize, void* pbuf)

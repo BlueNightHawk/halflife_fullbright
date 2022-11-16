@@ -7,6 +7,10 @@
 
 #pragma once
 
+#include <iostream>
+#include <string>
+#include <vector>
+
 /*
 ====================
 CStudioModelRenderer
@@ -187,8 +191,8 @@ public:
 	void StudioRenderEntity(bool fullbright = false);
 	void StudioCacheFullbrightNames();
 
-	char m_szCheckedModels[512][64];
-	char m_szFullBrightModels[512][64];
+	std::vector<std::string> m_szCheckedModels;
+	std::vector<std::string> m_szFullBrightModels;
 
 	// FULLBRIGHT END
 };

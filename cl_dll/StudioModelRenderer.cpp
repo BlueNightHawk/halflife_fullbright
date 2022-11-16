@@ -26,51 +26,12 @@
 #include <gl/GL.h>
 
 #include <string>
+#include <iostream>
+#include <vector>
 
 #define GL_CLAMP_TO_EDGE 0x812F
 
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
-
-GLuint g_iBlankTex = 0;
-
-// Simple helper function to load an image into a OpenGL texture with common settings
-bool LoadTextureFromFile(const char* filename, GLuint* out_texture, int* out_width = nullptr, int* out_height = nullptr)
-{
-	// Load from file
-	int image_width = 0;
-	int image_height = 0;
-	unsigned char* image_data = stbi_load(filename, &image_width, &image_height, NULL, 4);
-	if (image_data == NULL)
-		return false;
-
-	// Create a OpenGL texture identifier
-	GLuint image_texture;
-	glGenTextures(1, &image_texture);
-	glBindTexture(GL_TEXTURE_2D, image_texture);
-
-	// Setup filtering parameters for display
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); // This is required on WebGL for non power-of-two textures
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); // Same
-
-	// Upload pixels into texture
-#if defined(GL_UNPACK_ROW_LENGTH) && !defined(__EMSCRIPTEN__)
-	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-#endif
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image_width, image_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image_data);
-	stbi_image_free(image_data);
-
-	*out_texture = image_texture;
-
-	if (out_width)
-		*out_width = image_width;
-	if (out_height)
-		*out_height = image_height;
-
-	return true;
-}
+static GLuint g_iBlankTex = 0;
 
 // FULLBRIGHT END
 extern cvar_t* tfc_newmodels;
@@ -1271,7 +1232,7 @@ bool CStudioModelRenderer::StudioDrawModel(int flags)
 			StudioRenderModel();
 		}
 		else
-		{
+		{	
 			StudioRenderEntity(false);
 			StudioRenderEntity(true);
 		}
@@ -1808,18 +1769,18 @@ bool CStudioModelRenderer::StudioGetFullbright(model_s* pmodel)
 		return false;
 
 	// check if this model is already been checked
-	for (int list = 0; list < 512; list++)
+	for (size_t list = 0; list < m_szFullBrightModels.size(); list++)
 	{
-		if (!stricmp(pmodel->name, m_szFullBrightModels[list]))
+		if (!stricmp(pmodel->name, m_szFullBrightModels[list].c_str()))
 		{
 			return true;
 		}
 	}
 
 	// check if this model is already on our list
-	for (int list = 0; list < 512; list++)
+	for (size_t list = 0; list < m_szCheckedModels.size(); list++)
 	{
-		if (!strcmp(pmodel->name, m_szCheckedModels[list]))
+		if (!strcmp(pmodel->name, m_szCheckedModels[list].c_str()))
 		{
 			return false;
 		}
@@ -1831,15 +1792,7 @@ bool CStudioModelRenderer::StudioGetFullbright(model_s* pmodel)
 	if (strncmp((const char*)pHdr, "IDST", 4) && strncmp((const char*)pHdr, "IDSQ", 4))
 	{
 	//	delete[] pBuffer;
-
-		for (int list = 0; list < 512; list++)
-		{
-			if (strlen(m_szCheckedModels[list]) <= 0)
-			{
-				strcpy(m_szCheckedModels[list], pmodel->name);
-				break;
-			}
-		}
+		m_szCheckedModels.push_back(pmodel->name);
 		return false;
 	}
 
@@ -1856,25 +1809,11 @@ bool CStudioModelRenderer::StudioGetFullbright(model_s* pmodel)
 		}
 		if (foundfullbright)
 		{
-			for (int list = 0; list < 512; list++)
-			{
-				if (strlen(m_szFullBrightModels[list]) <= 0)
-				{
-					strcpy(m_szFullBrightModels[list], pmodel->name);
-					break;
-				}
-			}
+			m_szFullBrightModels.push_back(pmodel->name);
 		}
 	}
 
-	for (int list = 0; list < 512; list++)
-	{
-		if (strlen(m_szCheckedModels[list]) <= 0)
-		{
-			strcpy(m_szCheckedModels[list], pmodel->name);
-			break;
-		}
-	}
+	m_szCheckedModels.push_back(pmodel->name);
 
 	return foundfullbright;
 }
@@ -1890,18 +1829,18 @@ if false, it renders all non-fullbright textures
 */
 void CStudioModelRenderer::StudioRenderEntity(bool fullbright)
 {
-	mstudiotexture_t savedtexture[64];
-
 	studiohdr_t* pHdr = (studiohdr_t*)m_pStudioHeader;
 	mstudiotexture_t* pTexture = (mstudiotexture_t*)((byte*)m_pRenderModel->cache.data + pHdr->textureindex);
 
-	if (pHdr->textureindex)
+	std::vector<mstudiotexture_t> savedtexture;
+
+	if (pHdr->textureindex > 0)
 	{
 		for (int i = 0; i < pHdr->numtextures; i++)
 		{
-			memcpy(&savedtexture[i], &pTexture[i], sizeof(mstudiotexture_t));
+			savedtexture.push_back(pTexture[i]);
 			// memcpy(&pTexture[i], &pTexture[pHdr->numtextures + 1], sizeof(mstudiotexture_t));
-			if (pTexture[i].flags & STUDIO_NF_FULLBRIGHT)
+			if ((pTexture[i].flags & STUDIO_NF_FULLBRIGHT) != 0)
 			{
 				if (!fullbright)
 				{
@@ -1917,16 +1856,15 @@ void CStudioModelRenderer::StudioRenderEntity(bool fullbright)
 		}
 	}
 
+	alight_t lighting;
+	Vector dir;
+	lighting.plightvec = dir;
+
 	if (fullbright)
 	{
-		alight_t lighting;
-		Vector dir;
-		lighting.plightvec = dir;
-
-		IEngineStudio.StudioDynamicLight(m_pCurrentEntity, &lighting);
+		lighting.ambientlight = 128;
+		lighting.shadelight = 192;
 		lighting.color = {255, 255, 255};
-
-		IEngineStudio.StudioEntityLight(&lighting);
 		// model and frame independant
 		IEngineStudio.StudioSetupLighting(&lighting);
 
@@ -1934,12 +1872,7 @@ void CStudioModelRenderer::StudioRenderEntity(bool fullbright)
 	}
 	else
 	{
-		alight_t lighting;
-		Vector dir;
-		lighting.plightvec = dir;
-
 		IEngineStudio.StudioDynamicLight(m_pCurrentEntity, &lighting);
-
 		IEngineStudio.StudioEntityLight(&lighting);
 		// model and frame independant
 		IEngineStudio.StudioSetupLighting(&lighting);
@@ -1953,6 +1886,20 @@ void CStudioModelRenderer::StudioRenderEntity(bool fullbright)
 	}
 }
 
+void GenBlackTex()
+{
+	GLubyte pixels[3] = {0,0,0};
+
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glGenTextures(1, &g_iBlankTex);
+	glBindTexture(GL_TEXTURE_2D, g_iBlankTex);
+
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_RGB, GL_UNSIGNED_BYTE, pixels); 
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+}
+
 /*
 ====================
 StudioCacheFullbrightNames
@@ -1963,14 +1910,12 @@ void CStudioModelRenderer::StudioCacheFullbrightNames()
 {
 	const char* gamedir = gEngfuncs.pfnGetGameDirectory();
 
-	LoadTextureFromFile(((std::string) "./" + gamedir + "/gfx/blank.png").c_str(), &g_iBlankTex);
+	if (g_iBlankTex == 0)
+		GenBlackTex();
 
 	// clear the cache
-	for (int i = 0; i < 512; i++)
-	{
-		memset(m_szFullBrightModels[i], '\0', 64);
-		memset(m_szCheckedModels[i], '\0', 64);
-	}
+	m_szFullBrightModels.clear();
+	m_szCheckedModels.clear();
 
 	for (int i = 0; i < 512; i++)
 	{
